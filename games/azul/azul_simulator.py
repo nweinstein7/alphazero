@@ -3,6 +3,8 @@ import random
 import numpy as np
 import operator
 from games.games import AbstractGame
+import time
+from multiprocessing import Pool, Manager
 
 COLORS = ['RED', 'BLU', 'TRQ', 'YLL', 'BLK']
 
@@ -93,6 +95,16 @@ class PlayerBoard(object):
         self.tile_wall = [None] * TILE_WALL_SIZE
         self.floor = []
 
+    def get_tile_wall_row(self, index):
+        """
+        Given a row index, retrieve the row of tiles
+        at that index
+        """
+        row = []
+        for i in range(5):
+            row.append(self.tile_wall[index * 5 + i])
+        return row
+
 
 class AzulSimulator(AbstractGame):
     """
@@ -128,7 +140,7 @@ class AzulSimulator(AbstractGame):
                 factory.tiles.append(self.bag.pop())
 
     @classmethod
-    def load(cls, self):
+    def load(cls, self, randomize=True):
         # create a bag of tiles
         self.bag = []
         tile_number = 0
@@ -137,7 +149,8 @@ class AzulSimulator(AbstractGame):
                 self.bag.append(Tile(tile_number, c))
                 tile_number += 1
         # randomize the bag
-        random.shuffle(self.bag)
+        if randomize:
+            random.shuffle(self.bag)
 
         # initialize the factories with tiles
         self.factories = [Factory([]) for _ in range(0, self.num_factories)]
@@ -183,7 +196,6 @@ class AzulSimulator(AbstractGame):
         """
         result = color + placement * len(COLORS) + selection * (
             PLACEMENT_OPTIONS * len(COLORS))
-        print("MOVE AS INTEGER:", result)
         return result
 
     def update_turn(self):
@@ -195,10 +207,13 @@ class AzulSimulator(AbstractGame):
     def make_move(self, move):
         """
         Given a move as an integer, perform that move
+
+        Return True if round over, return False otherwise
         """
-        self.act(*self.parse_integer_move(move))
+        round_over = self.act(*self.parse_integer_move(move))
         self.state_stack.append(self.state())
         self.update_turn()
+        return round_over
 
     def undo_move(self):
         """
@@ -208,12 +223,91 @@ class AzulSimulator(AbstractGame):
         self.initialize_from_obs(past_state)
         self.update_turn()
 
+    def valid_moves(self):
+        """
+        Get available valid moves for this turn
+
+        Returns:
+            an array of integer moves
+        """
+        possible_selections = []
+        for i, f in enumerate(self.factories):
+            # Add factories as possible selections
+            if len(f.tiles) > 0:
+                possible_selections.append(i)
+        print(f"Center: {self.center}")
+        if len(
+                list(
+                    filter(lambda tile: tile.color != FIRST_MOVER_TILE,
+                           self.center))):
+            # Add center as a possible selection
+            print("ADDING CENTER")
+            possible_selections.append(len(self.factories))
+
+        print(possible_selections)
+        # Determine where on board we can place tiles.
+        # Validity depends on whether a tile has already been placed
+        # with that color on the tile wall, or whether
+        # the staging row already has a color chosen.
+        board = self.boards[self.turn - 1]
+        color_placements = []
+        for r, row in enumerate(board.staging_rows):
+            staged_tiles = [t for t in row if t is not None]
+            if len(staged_tiles) > 0 and len(staged_tiles) < len(row):
+                print(
+                    f"There are some blank spaces. Row: {r}. Len staged: {len(staged_tiles)}. Len row: {len(row)}"
+                )
+                # In this case, there are blank spaces available
+                color = staged_tiles[0].color
+                color_placements.append((color, r))
+            elif len(staged_tiles) == 0:
+                print(
+                    f"This row is empty. Row: {r}. Len staged: {len(staged_tiles)}. Len row: {len(row)}"
+                )
+                # In this case, the staging row is blank.
+                # Need to check the tile wall row to prevent invalid moves.
+                for c, _ in enumerate(COLORS):
+                    if not any(t is not None and t.color == c
+                               for t in board.get_tile_wall_row(r)):
+                        # This color has not been filled in on the tile wall, thus is
+                        # valid as a choice.
+                        color_placements.append((c, r))
+        # Add floor as valid move.
+        for c, _ in enumerate(COLORS):
+            color_placements.append((c, len(board.staging_rows)))
+
+        # Combine selections and color placements.
+        possible_moves = []
+        for s in possible_selections:
+            if s < len(self.factories):
+                # Find moves for each factory.
+                colors = set([t.color for t in self.factories[s].tiles])
+                for c in colors:
+                    possible_moves.extend([(s, _c, _p)
+                                           for _c, _p in color_placements
+                                           if _c == c])
+            elif s == len(self.factories):
+                # Find moves for center.
+                colors = set([
+                    t.color for t in self.center if t.color != FIRST_MOVER_TILE
+                ])
+                print(f"Center colors: {colors}")
+                print(f"Color placements: {color_placements}")
+                for c in colors:
+                    possible_moves.extend([(s, _c, _p)
+                                           for _c, _p in color_placements
+                                           if _c == c])
+        print(f"Possible moves: {possible_moves}")
+        return sorted([self.move_to_integer(*mv) for mv in possible_moves])
+
     def act(self, selection, color, placement):
         """
         Perform a move for a given player
         selection - the location selected (1 of factories or center)
         color - the color tiles to select
         placement - where to place the tiles (staging row or floor)
+
+        Return True if new round, return False if round not over
         """
         tile_row = placement + 1
         if placement == 5:
@@ -225,12 +319,10 @@ class AzulSimulator(AbstractGame):
               format(factory_selection, COLORS[color], tile_row, self.turn))
 
         tiles = []
-        valid_move_bonus = 0
         if selection >= self.num_factories:
             # selected center
             if len([t for t in self.center if t.color == color]) > 0:
                 print("Valid center move.")
-                valid_move_bonus += 1
                 for t in self.center.copy():
                     # make sure to copy so we don't shorten the list as we go
                     if t.color == color or t.color == FIRST_MOVER_TILE:
@@ -244,7 +336,6 @@ class AzulSimulator(AbstractGame):
             if len(tiles) > 0:
                 print("Fetched: {}".format([t.color for t in tiles]))
                 print("Discarded: {}".format([t.color for t in discard_tiles]))
-                valid_move_bonus += 1
 
             self.center.extend(discard_tiles)
         board = self.boards[self.turn - 1]
@@ -257,7 +348,6 @@ class AzulSimulator(AbstractGame):
                    for t in row) and board.tile_wall[tile_wall_index] == None:
                 # if the staging row is empty or matches the color, you can
                 # add tiles to it. Also, can't add if the tile wall already has that color.
-                added_to_row = False
                 for i, cell in enumerate(row):
                     if cell == None:
                         tile = next((_t for _t in tiles if _t.color == color),
@@ -266,21 +356,26 @@ class AzulSimulator(AbstractGame):
                             print("Tile found: {}".format(COLORS[tile.color]))
                             row[i] = tile
                             tiles.remove(tile)
-                            added_to_row = True
                         else:
                             print("No tiles found")
-                if added_to_row:
-                    valid_move_bonus += 1
         board.floor.extend(tiles)
         self.print_board()
-        print("Adding valid move bonus of {}".format(valid_move_bonus))
-        reward = self.start_new_round() + valid_move_bonus
-        return reward
+        return self.start_new_round()
 
     def state(self):
         """
-        Render game into observable state
+        Render game into observable state (a square)
+        5 rows of 8, 1 for each factory. Each factory has 4 tiles
+        which can be EMPTY, or one of the colors. So, sort the tiles. For example, RRRR is 1111 base 6.
+
+        6 x 21: each factory + center (6), 21 spots (20 for each tile/color combo, 1 for first mover tile)
+        ONE FOR EACH PLAYER:
+        6 x 25: each staging row row + floor (6), 25 spots (5 possible spots, 5 possible colors)
+        1 x 25: each tile spot, 1 if filled in, 0 otherwise (color is predetermined!!)
+
+        So, one possible encoding is 20 x 25??
         """
+        np.zeros((self.num_factories, 20))
         obs = np.full(shape=(self.num_tiles + 1,
                              self.num_factories + 3 + (self.num_players * 31)),
                       fill_value=EMPTY_TILE_POSITION)
@@ -315,6 +410,15 @@ class AzulSimulator(AbstractGame):
                                       board_index_start] = float(t.color)
         return obs
 
+    def round_over(self):
+        """
+        Check if a round is still in progress
+        - if there are tiles on factories OR
+        - if there are tiles in the center
+        """
+        return all(len(f.tiles) == 0
+                   for f in self.factories) and len(self.center) == 0
+
     def start_new_round(self):
         """
         Check if we need to start a new round, and if so:
@@ -323,13 +427,10 @@ class AzulSimulator(AbstractGame):
             - if bag runs out, move box tiles back to bag
         Return reward
         """
-        if all(len(f.tiles) == 0
-               for f in self.factories) and len(self.center) == 0:
+        if self.round_over():
             print("New round.")
-            # start each player in each round at +14 so that there are no negative rewards
-            #total_reward = self.num_players * 14  # for now, reward for all player success
-            total_reward = 0
-            for board in self.boards:
+            for (player_num, board) in enumerate(self.boards):
+                board_score = self.scores[player_num + 1]
                 for i, sr in enumerate(board.staging_rows):
                     if all(t != None for t in sr):
                         # if the row is complete
@@ -361,7 +462,7 @@ class AzulSimulator(AbstractGame):
                                             horizontal_tally))
                                     else:
                                         break
-                                total_reward += horizontal_tally
+                                board_score += horizontal_tally
 
                                 vertical_tally = 0
                                 vertical_start = tile_wall_location
@@ -385,9 +486,10 @@ class AzulSimulator(AbstractGame):
                                     # don't double count the piece if there
                                     # is nothing in vertical direction
                                     vertical_tally = 0
-                                total_reward += vertical_tally
-                                print("Total reward after row: {}".format(
-                                    total_reward))
+                                board_score += vertical_tally
+                                print(
+                                    "Total reward after row: {} for player {}".
+                                    format(board_score, player_num + 1))
                             else:
                                 # add remainder of tiles to box
                                 self.box.append(tile)
@@ -401,17 +503,20 @@ class AzulSimulator(AbstractGame):
                         # floor values are negative
                         print(
                             "Subtracting for board {} amount {} from total {}."
-                            .format(i + 1, FLOOR_MAP[i], total_reward))
-                        total_reward += FLOOR_MAP[i]
+                            .format(player_num + 1, FLOOR_MAP[i], board_score))
+                        board_score += FLOOR_MAP[i]
                     # remove tile from floor and add back to box, or center if 1st mover tile
                     t = board.floor.pop()
                     if t.color == FIRST_MOVER_TILE:
                         self.center.append(t)
                     else:
                         self.box.append(t)
+
+                self.scores[player_num + 1] = board_score
             if self.over():
                 # When game is over, apply the end of game rewards.
-                for board in self.boards:
+                for (player_num, board) in enumerate(self.boards):
+                    board_score = self.scores[player_num + 1]
                     # Complete rows = +2
                     for i in range(0, 5):
                         tiles_in_row = 0
@@ -420,7 +525,7 @@ class AzulSimulator(AbstractGame):
                                 tiles_in_row += 1
                         if tiles_in_row == 5:
                             print("Adding total reward for horizontal row")
-                            total_reward += 2
+                            board_score += 2
                     # Complete column = +7
                     for i in range(0, 5):
                         tiles_in_col = 0
@@ -429,7 +534,7 @@ class AzulSimulator(AbstractGame):
                                 tiles_in_col += 1
                         if tiles_in_col == 5:
                             print("Adding total reward for vertical column")
-                            total_reward += 7
+                            board_score += 7
                     # Complete color = +10
                     for color_index, color in enumerate(COLORS):
                         color_count = 0
@@ -439,15 +544,16 @@ class AzulSimulator(AbstractGame):
                         if color_count == 5:
                             print("Adding total reward for color {}".format(
                                 color))
-                            total_reward += 10
+                            board_score += 10
+                    self.scores[player_num + 1] = board_score
             else:
                 # If game not over, repopulate all the factories.
                 self.initialize_factories()
-            print("Reward: {}".format(total_reward))
-            return total_reward
+            print("Scores: {}".format(self.scores))
+            return True
         else:
             print("Round not done yet.")
-            return 0
+            return False
 
     def over(self):
         for board in self.boards:
@@ -524,6 +630,9 @@ class AzulSimulator(AbstractGame):
                             i, staging_row_color)
 
     def print_board(self):
+        print("SCORES")
+        print("{}".format(self.scores))
+
         print("FACTORIES")
         for i, factory in enumerate(self.factories):
             print("{}: {}".format(
@@ -543,6 +652,28 @@ class AzulSimulator(AbstractGame):
                     " ".join([str(t) for t in tile_wall_row])))
             print("\tFloor:{}".format(" ".join([str(t) for t in board.floor])))
 
+    def __repr__(self):
+        output = "FACTORIES"
+        for i, factory in enumerate(self.factories):
+            output += "\n" + "{}: {}".format(
+                i + 1, ' '.join(sorted([str(t) for t in factory.tiles])))
+        output += "\n" + "CENTER"
+        output += "\n" + "{}".format(' '.join(
+            sorted([str(t) for t in self.center])))
+        output += "\n" + "BOARDS"
+        for i, board in enumerate(self.boards):
+            output += "\n" + "{}:".format(i + 1)
+            for j, sr in enumerate(board.staging_rows):
+                tile_wall_row = [
+                    board.tile_wall[k] for k in range(j * 5, j * 5 + 5)
+                ]
+                output += "\n" + "\t{}:{}\t|\t{}".format(
+                    j + 1, " ".join([str(t) for t in sr]), " ".join(
+                        [str(t) for t in tile_wall_row]))
+            output += "\n" + "\tFloor:{}".format(" ".join(
+                [str(t) for t in board.floor]))
+        return output
+
     def __eq__(self, azs):
         """
         Comparison method
@@ -561,6 +692,67 @@ class AzulSimulator(AbstractGame):
         return True
 
 
+def playout(azs, end_time=None):
+    """
+    Given an azul simulator, playout the full round and find
+    the best move.
+    """
+    valid_moves = azs.valid_moves()
+    # Shuffle the moves so we don't always explore the same moves
+    random.shuffle(valid_moves)
+    # Dictionary of each player's best moves. 1 for player 1, 2 for player 2, etc.
+    best_moves = {key: (None, -100) for key in range(1, azs.num_players + 1)}
+    playouts = 0
+    if end_time != None and time.time() > end_time:
+        print("TIMED OUT. Picking randomly.")
+        best_moves[azs.turn] = (random.choice(valid_moves), -100)
+        return (best_moves, 0)
+    loop_end_time = time.time() + 60
+    for move in valid_moves:
+        if time.time() > loop_end_time:
+            print(
+                f"TIMED OUT IN LOOP. Returning best so far: {best_moves} after {playouts} playouts."
+            )
+            break
+        print("Valid move: {}".format(azs.parse_integer_move(move)))
+        test_simulator = AzulSimulator(azs.num_players)
+        test_simulator.initialize_from_obs(azs.state())
+        test_simulator.turn = azs.turn
+        round_over = test_simulator.make_move(move)
+        if round_over:
+            print("ROUND OVER IN PLAYOUT")
+            for player in best_moves:
+                round_score = test_simulator.scores[player]
+                print(f"SCORE FOR PLAYER {player} is {round_score}")
+                normalized_round_score = round_score
+                for key in test_simulator.scores:
+                    if key != player:
+                        diff = round_score - test_simulator.scores[key]
+                        print(f"DIFF WITH PLAYER {key} is {diff}")
+                        normalized_round_score += diff
+                max_score = max(normalized_round_score, best_moves[player][1])
+                if normalized_round_score == max_score:
+                    best_moves[player] = (move, max_score)
+            playouts += 1
+        else:
+            new_best_moves, new_playouts = playout(
+                test_simulator,
+                end_time if end_time != None else time.time() + 10)
+            print(f"NEW BEST MOVES: {new_best_moves}")
+            playout_move, playout_score = new_best_moves[azs.turn]
+            max_score = max(best_moves[azs.turn][1], playout_score)
+            if playout_score == max_score:
+                print(
+                    f"PLAYOUT SCORE {playout_score} is maximized. MOVE: {azs.parse_integer_move(move)}"
+                )
+                best_moves[azs.turn] = (move, max_score)
+                for player in new_best_moves:
+                    if player != azs.turn:
+                        best_moves[player] = new_best_moves[player]
+            playouts += new_playouts
+    return (best_moves, playouts)
+
+
 if __name__ == '__main__':
     print('Playing azul!')
     n_players = int(input("How many players?"))
@@ -568,15 +760,28 @@ if __name__ == '__main__':
     azs.load(azs)
     while not azs.over():
         azs.print_board()
-        selection = input('Player {}, which factory do you choose? '.format(
-            azs.turn))
-        color = input(
-            'Which color do you choose? RED: 0, BLU: 1, TRQ: 2, YLL:3, BLK: 4. '
-        )
-        placement = input('Which tile row do you choose? ')
-        reward = azs.act(int(selection) - 1, int(color), int(placement) - 1)
-        print("Reward: {}".format(reward))
-        azs.update_turn()
+        integer_move = -1
+        valid_moves = azs.valid_moves()
+        while not integer_move in valid_moves:
+            best_moves, num_playouts = playout(azs)
+            azs.print_board()
+            print(
+                "Recommended Move: {} with score {} after {} playouts".format(
+                    azs.parse_integer_move(best_moves[azs.turn][0]),
+                    best_moves[azs.turn][1], num_playouts))
+
+            selection = input(
+                'Player {}, which factory do you choose? '.format(azs.turn))
+            color = input(
+                'Which color do you choose? RED: 0, BLU: 1, TRQ: 2, YLL:3, BLK: 4. '
+            )
+            placement = input('Which tile row do you choose? ')
+            integer_move = azs.move_to_integer(
+                int(selection) - 1, int(color),
+                int(placement) - 1)
+            if not integer_move in valid_moves:
+                print("Invalid move. Try again. Valid moves: ", valid_moves)
+        azs.make_move(integer_move)
         print("State:")
         print(azs.state())
         print("")
