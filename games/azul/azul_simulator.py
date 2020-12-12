@@ -707,7 +707,7 @@ def playout(azs, end_time=None):
         print("TIMED OUT. Picking randomly.")
         best_moves[azs.turn] = (random.choice(valid_moves), -100)
         return (best_moves, 0)
-    loop_end_time = time.time() + 60
+    loop_end_time = time.time() + 30
     for move in valid_moves:
         if time.time() > loop_end_time:
             print(
@@ -737,7 +737,7 @@ def playout(azs, end_time=None):
         else:
             new_best_moves, new_playouts = playout(
                 test_simulator,
-                end_time if end_time != None else time.time() + 10)
+                end_time if end_time != None else time.time() + 5)
             print(f"NEW BEST MOVES: {new_best_moves}")
             playout_move, playout_score = new_best_moves[azs.turn]
             max_score = max(best_moves[azs.turn][1], playout_score)
@@ -753,6 +753,29 @@ def playout(azs, end_time=None):
     return (best_moves, playouts)
 
 
+def get_next_move_from_playouts(azs):
+    playout_simulators = []
+    for i in range(0, 10):
+        test_simulator = AzulSimulator(azs.num_players)
+        test_simulator.initialize_from_obs(azs.state())
+        test_simulator.turn = azs.turn
+        playout_simulators.append(test_simulator)
+
+    with Pool() as p:
+        results = p.map(playout, playout_simulators)
+    print(results)
+    num_playouts = 0
+    max_score = -100
+    recommended_move = None
+    for best_moves, playouts in results:
+        new_move, new_score = best_moves[azs.turn]
+        num_playouts += playouts
+        max_score = max(max_score, new_score)
+        if max_score == new_score:
+            recommended_move = new_move
+    return (recommended_move, max_score, num_playouts)
+
+
 if __name__ == '__main__':
     print('Playing azul!')
     n_players = int(input("How many players?"))
@@ -763,13 +786,18 @@ if __name__ == '__main__':
         integer_move = -1
         valid_moves = azs.valid_moves()
         while not integer_move in valid_moves:
-            best_moves, num_playouts = playout(azs)
+            #best_moves, num_playouts = playout(azs)
+            #print(
+            #    "Recommended Move: {} with score {} after {} playouts".format(
+            #        azs.parse_integer_move(best_moves[azs.turn][0]),
+            #        best_moves[azs.turn][1], num_playouts))
+            recommended_move, playout_score, num_playouts = get_next_move_from_playouts(
+                azs)
             azs.print_board()
             print(
                 "Recommended Move: {} with score {} after {} playouts".format(
-                    azs.parse_integer_move(best_moves[azs.turn][0]),
-                    best_moves[azs.turn][1], num_playouts))
-
+                    azs.parse_integer_move(recommended_move), playout_score,
+                    num_playouts))
             selection = input(
                 'Player {}, which factory do you choose? '.format(azs.turn))
             color = input(
