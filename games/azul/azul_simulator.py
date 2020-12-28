@@ -42,7 +42,7 @@ class Tile(object):
 
     def __str__(self):
         if self.color < len(COLORS):
-            return COLORS[self.color]
+            return COLORS[int(self.color)]
         elif self.color == FIRST_MOVER_TILE:
             return '1st'
         else:
@@ -110,7 +110,7 @@ class AzulSimulator(AbstractGame):
     """
     Simulate a game of Azul
     """
-    def __init__(self, num_players=2, num_tiles=100):
+    def __init__(self, num_players=2, num_tiles=100, turn=1):
         self.num_players = num_players
         self.num_tiles = num_tiles
         self.num_factories = self.num_players * 2 + 1
@@ -121,7 +121,7 @@ class AzulSimulator(AbstractGame):
         self.box = []
         # 1-indexed number indicating which player's turn it is
         # Implies player 1 plays first move
-        self.turn = 1
+        self.turn = turn
         # Dictionary of scores
         self.scores = {i: 0 for i in range(1, num_players + 1)}
         # Stack of previous game states, for use with undo.
@@ -353,7 +353,8 @@ class AzulSimulator(AbstractGame):
                         tile = next((_t for _t in tiles if _t.color == color),
                                     None)
                         if tile:
-                            print("Tile found: {}".format(COLORS[tile.color]))
+                            print("Tile found: {}".format(COLORS[int(
+                                tile.color)]))
                             row[i] = tile
                             tiles.remove(tile)
                         else:
@@ -375,10 +376,11 @@ class AzulSimulator(AbstractGame):
 
         So, one possible encoding is 20 x 25??
         """
-        np.zeros((self.num_factories, 20))
+        np.zeros((self.num_factories, 20), dtype=float)
         obs = np.full(shape=(self.num_tiles + 1,
                              self.num_factories + 3 + (self.num_players * 31)),
-                      fill_value=EMPTY_TILE_POSITION)
+                      fill_value=EMPTY_TILE_POSITION,
+                      dtype=float)
         for i, f in enumerate(self.factories):
             for t in f.tiles:
                 obs[t.number][i] = float(t.color)
@@ -715,9 +717,8 @@ def playout(azs, end_time=None):
             )
             break
         print("Valid move: {}".format(azs.parse_integer_move(move)))
-        test_simulator = AzulSimulator(azs.num_players)
+        test_simulator = AzulSimulator(azs.num_players, turn=azs.turn)
         test_simulator.initialize_from_obs(azs.state())
-        test_simulator.turn = azs.turn
         round_over = test_simulator.make_move(move)
         if round_over:
             print("ROUND OVER IN PLAYOUT")
