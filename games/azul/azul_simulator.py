@@ -48,6 +48,9 @@ class Tile(object):
         else:
             return ''
 
+    def __repr__(self):
+        return self.__str__()
+
     def __eq__(self, t):
         """
         Check equality
@@ -140,7 +143,7 @@ class AzulSimulator(AbstractGame):
                 factory.tiles.append(self.bag.pop())
 
     @classmethod
-    def load(cls, self, randomize=True):
+    def load(cls, self, random_seed=None):
         # create a bag of tiles
         self.bag = []
         tile_number = 0
@@ -149,7 +152,9 @@ class AzulSimulator(AbstractGame):
                 self.bag.append(Tile(tile_number, c))
                 tile_number += 1
         # randomize the bag
-        if randomize:
+        if random_seed:
+            random.Random(random_seed).shuffle(self.bag)
+        else:
             random.shuffle(self.bag)
 
         # initialize the factories with tiles
@@ -210,8 +215,8 @@ class AzulSimulator(AbstractGame):
 
         Return True if round over, return False otherwise
         """
-        round_over = self.act(*self.parse_integer_move(move))
         self.state_stack.append(self.state())
+        round_over = self.act(*self.parse_integer_move(move))
         self.update_turn()
         return round_over
 
@@ -221,7 +226,6 @@ class AzulSimulator(AbstractGame):
         """
         past_state = self.state_stack.pop()
         self.initialize_from_obs(past_state)
-        self.update_turn()
 
     def valid_moves(self):
         """
@@ -365,51 +369,60 @@ class AzulSimulator(AbstractGame):
 
     def state(self):
         """
-        Render game into observable state (a square)
-        5 rows of 8, 1 for each factory. Each factory has 4 tiles
-        which can be EMPTY, or one of the colors. So, sort the tiles. For example, RRRR is 1111 base 6.
-
-        6 x 21: each factory + center (6), 21 spots (20 for each tile/color combo, 1 for first mover tile)
-        ONE FOR EACH PLAYER:
-        6 x 25: each staging row row + floor (6), 25 spots (5 possible spots, 5 possible colors)
-        1 x 25: each tile spot, 1 if filled in, 0 otherwise (color is predetermined!!)
-
-        So, one possible encoding is 20 x 25??
+        Render game into observable state
+        
+        [   
+            # Each one of these blocks represents a single tile
+            [
+                # This row represents the color of a tile at a specific position, e.g. on
+                # factory #1.
+                [ 1 if RED else 0, 1 if BLU else 0, ..., 1 if BLK else 0, 1 if 1st mover else 0, 1 or 0 depending on turn]
+            ]
+        ]
         """
-        np.zeros((self.num_factories, 20), dtype=float)
-        obs = np.full(shape=(self.num_tiles + 1,
-                             self.num_factories + 3 + (self.num_players * 31)),
-                      fill_value=EMPTY_TILE_POSITION,
-                      dtype=float)
+        obs = np.zeros(
+            shape=(
+                self.num_tiles + 1,
+                # 1 column for each factory, + 3 for bag, center, and box;
+                # +31 per player for tile rows and tile wall.
+                self.num_factories + 3 + (self.num_players * 31),
+                # 1 column for each color, + 1 column for the first mover tile (5) + 1 column for turn
+                len(COLORS) + 2 + self.num_players),
+            dtype=float)
         for i, f in enumerate(self.factories):
             for t in f.tiles:
-                obs[t.number][i] = float(t.color)
+                obs[t.number][i][int(t.color)] = 1.0
         for bag_tile in self.bag:
-            obs[bag_tile.number][self.num_factories] = float(bag_tile.color)
+            obs[bag_tile.number][self.num_factories][int(bag_tile.color)] = 1.0
         for center_tile in self.center:
-            obs[center_tile.number][self.num_factories + 1] = float(
-                center_tile.color)
+            obs[center_tile.number][self.num_factories + 1][int(
+                center_tile.color)] = 1.0
         for box_tile in self.box:
-            obs[box_tile.number][self.num_factories + 2] = float(
-                box_tile.color)
+            obs[box_tile.number][self.num_factories + 2][int(
+                box_tile.color)] = 1.0
         # board index start is the first slot for indexing
         # tiles on the board
         board_index_start = self.num_factories + 3
         for b, board in enumerate(self.boards):
             for t in board.floor:
                 # 0th position of every chunk of 31 is the floor
-                obs[t.number][b * 31 + board_index_start] = float(t.color)
+                obs[t.number][b * 31 + board_index_start][int(t.color)] = 1.0
             for x, t in enumerate(board.tile_wall):
                 if t:
                     # positions 1 - 25 are for the tile wall
-                    obs[t.number][b * 31 + 1 + x + board_index_start] = float(
-                        t.color)
+                    obs[t.number][b * 31 + 1 + x + board_index_start][int(
+                        t.color)] = 1.0
             for y, r in enumerate(board.staging_rows):
                 for t in r:
                     # positions 26 - 31 are staging rows
                     if t:
                         obs[t.number][b * 31 + TILE_WALL_SIZE + y +
-                                      board_index_start] = float(t.color)
+                                      board_index_start][int(t.color)] = 1.0
+        obs[:, :, len(COLORS) + 1].fill(float(self.turn))
+        # Add score to state:
+        for player in range(1, self.num_players + 1):
+            obs[:, :,
+                len(COLORS) + 1 + player].fill(float(self.scores[player]))
         return obs
 
     def round_over(self):
@@ -591,45 +604,59 @@ class AzulSimulator(AbstractGame):
         """
         self.factories = [Factory([]) for _ in range(0, self.num_factories)]
         self.boards = [PlayerBoard() for _ in range(0, self.num_players)]
+        self.bag = []
+        self.center = []
+        self.box = []
+        # Turn is stored after colors in every row, but let's
+        # just grab it from the first one.
+        self.turn = obs[0][0][len(COLORS) + 1]
 
-        for i in range(0, self.num_tiles + 1):
-            for j in range(0, self.num_factories):
-                color = obs[i][j]
-                if color != EMPTY_TILE_POSITION:
-                    t = Tile(i, color)
-                    self.factories[j].tiles.append(t)
-            bag_color = obs[i][self.num_factories]
-            if bag_color != EMPTY_TILE_POSITION:
-                self.bag.append(Tile(i, bag_color))
-            center_color = obs[i][self.num_factories + 1]
-            if center_color != EMPTY_TILE_POSITION:
-                self.center.append(Tile(i, center_color))
-            box_color = obs[i][self.num_factories + 2]
-            if box_color != EMPTY_TILE_POSITION:
-                self.box.append(Tile(i, box_color))
+        # Similarly, score is stored after turn.
+        # Add score to state:
+        for player in range(1, self.num_players + 1):
+            self.scores[player] = obs[0, 0, len(COLORS) + 1 + player]
 
-            # populate player boards
-            board_index_start = self.num_factories + 3
-            for b, board in enumerate(self.boards):
-                # populate floor from observation
-                floor_color = obs[i][b * 31 + board_index_start]
-                if floor_color != EMPTY_TILE_POSITION:
-                    board.floor.append(Tile(i, floor_color))
+        for tile_number in range(0, self.num_tiles + 1):
+            for color in range(0, len(COLORS) + 1):
+                # Iterate over every color, INCLUDING the 1st mover.
+                for factory in range(0, self.num_factories):
+                    if obs[tile_number][factory][color] == 1.0:
+                        t = Tile(tile_number, color)
+                        self.factories[factory].tiles.append(t)
+                if obs[tile_number][self.num_factories][color] == 1.0:
+                    # Add tile to bag if appropriate.
+                    t = Tile(tile_number, color)
+                    self.bag.append(t)
+                if obs[tile_number][self.num_factories + 1][color] == 1.0:
+                    # Add tile to center if appropriate.
+                    t = Tile(tile_number, color)
+                    self.center.append(t)
+                if obs[tile_number][self.num_factories + 2][color] == 1.0:
+                    # Add tile to box if appropriate.
+                    t = Tile(tile_number, color)
+                    self.box.append(t)
 
-                # populate tile wall
-                for x in range(0, TILE_WALL_SIZE):
-                    tile_wall_color = obs[i][board_index_start + b * 31 + x +
-                                             1]
-                    if tile_wall_color != EMPTY_TILE_POSITION:
-                        board.tile_wall[x] = Tile(i, tile_wall_color)
-                # populate staging rows
-                for y in range(0, 5):
-                    staging_row_color = obs[i][board_index_start + b * 31 + y +
-                                               TILE_WALL_SIZE]
-                    if staging_row_color != EMPTY_TILE_POSITION:
-                        first_empty_spot = board.staging_rows[y].index(None)
-                        board.staging_rows[y][first_empty_spot] = Tile(
-                            i, staging_row_color)
+                # populate player boards
+                board_index_start = self.num_factories + 3
+                for b, board in enumerate(self.boards):
+                    # populate floor from observation
+                    if obs[tile_number][b * 31 +
+                                        board_index_start][color] == 1.0:
+                        board.floor.append(Tile(tile_number, color))
+
+                    # populate tile wall
+                    for x in range(0, TILE_WALL_SIZE):
+                        if obs[tile_number][board_index_start + b * 31 + x +
+                                            1][color] == 1.0:
+                            board.tile_wall[x] = Tile(tile_number, color)
+                    # populate staging rows
+                    for y in range(0, 5):
+                        if obs[tile_number][board_index_start + b * 31 + y +
+                                            TILE_WALL_SIZE][color] == 1.0:
+                            first_empty_spot = board.staging_rows[y].index(
+                                None)
+                            board.staging_rows[y][first_empty_spot] = Tile(
+                                tile_number, color)
 
     def print_board(self):
         print("SCORES")
@@ -689,8 +716,10 @@ class AzulSimulator(AbstractGame):
         for k, t in enumerate(sorted_tile_list(self.center)):
             assert t == sorted_azs_center[k]
         assert len(azs.bag) == len(self.bag)
+        print(f"Other box: {azs.box}. Current box: {self.box}")
         assert len(azs.box) == len(self.box)
         assert len(azs.boards) == len(self.boards)
+        assert azs.turn == self.turn
         return True
 
 
