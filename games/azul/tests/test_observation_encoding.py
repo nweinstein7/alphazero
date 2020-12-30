@@ -25,3 +25,15 @@ def test_encoding():
         dup = AzulSimulator(2)
         dup.initialize_from_obs(azs.state())
         assert dup == azs
+
+
+def test_copy():
+    azs = AzulSimulator(2, random_seed=7)
+    azs.load(azs)
+    print(azs.valid_moves())
+    azs.make_move(0)
+    azs2 = azs.copy()
+    print(azs.boards[0].tile_wall)
+
+    print(azs2.boards[0].tile_wall)
+    assert azs2 == azs

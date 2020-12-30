@@ -108,6 +108,12 @@ class PlayerBoard(object):
             row.append(self.tile_wall[index * 5 + i])
         return row
 
+    def __eq__(self, other_board):
+        assert self.staging_rows == other_board.staging_rows
+        assert self.tile_wall == other_board.tile_wall
+        assert self.floor == other_board.floor
+        return True
+
 
 class AzulSimulator(AbstractGame):
     """
@@ -130,7 +136,7 @@ class AzulSimulator(AbstractGame):
         # Stack of previous game states, for use with undo.
         self.state_stack = []
         self.next_round_turn = None
-        self.random_seed = None
+        self.random_seed = random_seed
 
     def initialize_factories(self):
         """
@@ -147,7 +153,7 @@ class AzulSimulator(AbstractGame):
 
     def shuffle_bag(self):
         # randomize the bag
-        if self.random_seed:
+        if self.random_seed != None:
             random.Random(self.random_seed).shuffle(self.bag)
         else:
             random.shuffle(self.bag)
@@ -175,10 +181,14 @@ class AzulSimulator(AbstractGame):
         return self
 
     def copy(self):
+        print("BEFORE COPY")
+        self.print_board()
         azs = AzulSimulator(num_players=self.num_players,
                             num_tiles=self.num_tiles,
                             turn=self.turn)
         azs.initialize_from_obs(self.state())
+        print("AFTER COPY")
+        azs.print_board()
         return azs
 
     def parse_integer_move(self, move):
@@ -269,6 +279,7 @@ class AzulSimulator(AbstractGame):
         # Validity depends on whether a tile has already been placed
         # with that color on the tile wall, or whether
         # the staging row already has a color chosen.
+        print(f"VALID MOVE TURN: {int(self.turn) - 1}")
         board = self.boards[int(self.turn) - 1]
         color_placements = []
         for r, row in enumerate(board.staging_rows):
@@ -362,6 +373,7 @@ class AzulSimulator(AbstractGame):
         if placement < len(board.staging_rows):
             # place in staging row
             row = board.staging_rows[placement]
+            print(f"ROW TO ADD TO: {row}")
             color_index = TILE_WALL_MAP[placement].index(color)
             tile_wall_index = 5 * placement + color_index
             if all(t == None or t.color == color
@@ -425,15 +437,21 @@ class AzulSimulator(AbstractGame):
                 obs[t.number][b * 31 + board_index_start][int(t.color)] = 1.0
             for x, t in enumerate(board.tile_wall):
                 if t:
-                    # positions 1 - 25 are for the tile wall
+                    # Positions 1 - 25 are for the tile wall.
+                    # Add 1 for the floor.
                     obs[t.number][b * 31 + 1 + x + board_index_start][int(
                         t.color)] = 1.0
             for y, r in enumerate(board.staging_rows):
                 for t in r:
-                    # positions 26 - 31 are staging rows
+                    # Positions 26 - 31 are staging rows.
+                    # Add 1 for the floor.
                     if t:
+                        print(
+                            f"Adding tile {t} to the obs at {(t.number, b * 31 + TILE_WALL_SIZE + y + board_index_start, int(t.color))}"
+                        )
                         obs[t.number][b * 31 + TILE_WALL_SIZE + y +
-                                      board_index_start][int(t.color)] = 1.0
+                                      board_index_start + 1][int(
+                                          t.color)] = 1.0
         obs[:, :, len(COLORS) + 1].fill(float(self.turn))
         # Add score to state:
         for player in range(1, self.num_players + 1):
@@ -668,15 +686,23 @@ class AzulSimulator(AbstractGame):
                     for x in range(0, TILE_WALL_SIZE):
                         if obs[tile_number][board_index_start + b * 31 + x +
                                             1][color] == 1.0:
-                            board.tile_wall[x] = Tile(tile_number, color)
+                            tile = Tile(tile_number, color)
+                            board.tile_wall[x] = tile
+                            print(
+                                f"Populating tile wall with {tile} because {(tile_number, board_index_start + b * 31 + x +1,color)} is {1.0}"
+                            )
                     # populate staging rows
                     for y in range(0, 5):
+                        # Add 1 for the floor.
                         if obs[tile_number][board_index_start + b * 31 + y +
-                                            TILE_WALL_SIZE][color] == 1.0:
+                                            TILE_WALL_SIZE + 1][color] == 1.0:
                             first_empty_spot = board.staging_rows[y].index(
                                 None)
-                            board.staging_rows[y][first_empty_spot] = Tile(
-                                tile_number, color)
+                            tile = Tile(tile_number, color)
+                            board.staging_rows[y][first_empty_spot] = tile
+                            print(
+                                f"Adding tile {tile} to board {b} staging row {y} spot {first_empty_spot} because {board_index_start + b * 31 + y + TILE_WALL_SIZE}"
+                            )
 
     def print_board(self):
         print("SCORES")
@@ -739,6 +765,9 @@ class AzulSimulator(AbstractGame):
         print(f"Other box: {azs.box}. Current box: {self.box}")
         assert len(azs.box) == len(self.box)
         assert len(azs.boards) == len(self.boards)
+        for b, board in enumerate(self.boards):
+            print(f"{board.tile_wall} vs {azs.boards[b].tile_wall}")
+            assert board == azs.boards[b]
         assert azs.turn == self.turn
         return True
 

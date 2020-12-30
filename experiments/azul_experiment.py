@@ -93,11 +93,11 @@ class Net(TrainableModel):
         print(f"PREDS: {preds['target'][:, 0]}")
         print(f"TARGETS: {targets['target']}")
 
-        score, _ = pearsonr(preds['target'][:, 0], targets['target'])
-        base_score, _ = pearsonr(preds['target'][:, 0],
-                                 shuffle(targets['target']))
-        print(f"Score: {score}. Base score: {base_score}")
-        return "{0:.4f}/{1:.4f}".format(score, base_score)
+        #score, _ = pearsonr(preds['target'][:, 0], targets['target'])
+        #base_score, _ = pearsonr(preds['target'][:, 0],
+        #                         shuffle(targets['target']))
+        #print(f"Score: {score}. Base score: {base_score}")
+        return f"pred: {preds['target'][:, 0]} actual: {targets['target']}"
 
 
 if __name__ == "__main__":
@@ -112,7 +112,7 @@ if __name__ == "__main__":
     model.maybe_load_from_file()
     controller = AzulController(manager, model)
 
-    for i in range(0, 2):
+    for i in range(0, 1000):
         game = AzulSimulator(2)
         game.load(game)
         while not game.over():

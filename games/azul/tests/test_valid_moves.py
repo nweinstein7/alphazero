@@ -5,8 +5,8 @@ def test_move_to_integer():
     """
     Check getting valid moves
     """
-    azs = AzulSimulator(2)
-    azs.load(azs, random_seed=4)
+    azs = AzulSimulator(2, random_seed=4)
+    azs.load(azs)
 
     round_over = False
     while not round_over:
