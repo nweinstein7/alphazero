@@ -57,6 +57,7 @@ if __name__ == "__main__":
 	manager = Manager()
 	model = Net()
 	model.compile(torch.optim.Adadelta, lr=0.3)
+	print("Compiled")
 	controller = AlphaZeroController(manager, model)
 
 	for i in range(0, 1000):

@@ -113,7 +113,7 @@ class AzulSimulator(AbstractGame):
     """
     Simulate a game of Azul
     """
-    def __init__(self, num_players=2, num_tiles=100, turn=1):
+    def __init__(self, num_players=2, num_tiles=100, turn=1, random_seed=None):
         self.num_players = num_players
         self.num_tiles = num_tiles
         self.num_factories = self.num_players * 2 + 1
@@ -129,11 +129,14 @@ class AzulSimulator(AbstractGame):
         self.scores = {i: 0 for i in range(1, num_players + 1)}
         # Stack of previous game states, for use with undo.
         self.state_stack = []
+        self.next_round_turn = None
+        self.random_seed = None
 
     def initialize_factories(self):
         """
         Initialize each factory from the bag
         """
+        self.shuffle_bag()
         for factory in self.factories:
             for _ in range(0, 4):
                 if len(self.bag) == 0:
@@ -142,8 +145,15 @@ class AzulSimulator(AbstractGame):
                     self.box = []
                 factory.tiles.append(self.bag.pop())
 
+    def shuffle_bag(self):
+        # randomize the bag
+        if self.random_seed:
+            random.Random(self.random_seed).shuffle(self.bag)
+        else:
+            random.shuffle(self.bag)
+
     @classmethod
-    def load(cls, self, random_seed=None):
+    def load(cls, self):
         # create a bag of tiles
         self.bag = []
         tile_number = 0
@@ -151,12 +161,6 @@ class AzulSimulator(AbstractGame):
             for _ in range(0, 20):
                 self.bag.append(Tile(tile_number, c))
                 tile_number += 1
-        # randomize the bag
-        if random_seed:
-            random.Random(random_seed).shuffle(self.bag)
-        else:
-            random.shuffle(self.bag)
-
         # initialize the factories with tiles
         self.factories = [Factory([]) for _ in range(0, self.num_factories)]
         self.initialize_factories()
@@ -169,6 +173,13 @@ class AzulSimulator(AbstractGame):
         print("GAME RESET")
         self.print_board()
         return self
+
+    def copy(self):
+        azs = AzulSimulator(num_players=self.num_players,
+                            num_tiles=self.num_tiles,
+                            turn=self.turn)
+        azs.initialize_from_obs(self.state())
+        return azs
 
     def parse_integer_move(self, move):
         """
@@ -207,7 +218,12 @@ class AzulSimulator(AbstractGame):
         """
         Change turns
         """
-        self.turn = self.turn % self.num_players + 1
+        if self.next_round_turn != None:
+            # If the round is over, set the turn based on the first mover tile.
+            self.turn = self.next_round_turn
+            self.next_round_turn = None
+        else:
+            self.turn = self.turn % self.num_players + 1
 
     def make_move(self, move):
         """
@@ -253,7 +269,7 @@ class AzulSimulator(AbstractGame):
         # Validity depends on whether a tile has already been placed
         # with that color on the tile wall, or whether
         # the staging row already has a color chosen.
-        board = self.boards[self.turn - 1]
+        board = self.boards[int(self.turn) - 1]
         color_placements = []
         for r, row in enumerate(board.staging_rows):
             staged_tiles = [t for t in row if t is not None]
@@ -342,7 +358,7 @@ class AzulSimulator(AbstractGame):
                 print("Discarded: {}".format([t.color for t in discard_tiles]))
 
             self.center.extend(discard_tiles)
-        board = self.boards[self.turn - 1]
+        board = self.boards[int(self.turn) - 1]
         if placement < len(board.staging_rows):
             # place in staging row
             row = board.staging_rows[placement]
@@ -523,6 +539,8 @@ class AzulSimulator(AbstractGame):
                     # remove tile from floor and add back to box, or center if 1st mover tile
                     t = board.floor.pop()
                     if t.color == FIRST_MOVER_TILE:
+                        # Update player who goes first next round.
+                        self.next_round_turn = player_num + 1
                         self.center.append(t)
                     else:
                         self.box.append(t)
@@ -584,13 +602,15 @@ class AzulSimulator(AbstractGame):
 
     def score(self):
         """
-        For now, only works in 2-player mode:
-        Returns -1 if "current" player would lose, 1 if they would win, 0 if game not over
+        Returns difference of current player with winning player, if not winning,
+        else size of lead if winning.
         """
         if not self.over():
             return 0
         winning_player = max(self.scores.items(),
                              key=operator.itemgetter(1))[0]
+        print(f"Winning player {winning_player}")
+        print(f"Turn: {self.turn}")
         if self.turn == winning_player:
             # Turn indicates the player who will go next in this case,
             # so you don't want turn to equal winning player.

@@ -12,6 +12,7 @@ def sample(probs, T=1.0):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         values = np.exp(np.array([probs[key] for key in keys])/T).clip(0, 1e9)
+    print(f"Values from sample: {values}")
     return keys[np.random.choice(len(keys), p=values/values.sum())]
 
 

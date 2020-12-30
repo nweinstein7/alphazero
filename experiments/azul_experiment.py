@@ -8,6 +8,7 @@ from modules import TrainableModel
 from games.azul.azul_simulator import AzulSimulator
 
 import multiprocessing
+
 from multiprocessing import Pool, Manager
 
 from games.azul.azul_controller import AzulController
@@ -16,6 +17,9 @@ from games.azul.azul_simulator import AzulSimulator
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from scipy.stats import pearsonr
+from sklearn.utils import shuffle
 
 PATH = "./model.pt"
 """ CNN representing estimated value for each board state.
@@ -26,7 +30,7 @@ class Net(TrainableModel):
     def __init__(self):
 
         super(TrainableModel, self).__init__()
-        self.conv = nn.Conv2d(1, 32, kernel_size=(3, 3), padding=(1, 1))
+        self.conv = nn.Conv2d(9, 32, kernel_size=(3, 3), padding=(1, 1))
         self.conv2 = nn.Conv2d(32, 32, kernel_size=(3, 3), padding=(1, 1))
 
         self.conv3 = nn.Conv2d(32,
@@ -44,12 +48,15 @@ class Net(TrainableModel):
     def loss(self, data, data_pred):
         Y_pred = data_pred["target"]
         Y_target = data["target"]
+        print(f"Target size: {Y_target.size()}")
+        Y_target = Y_target.view(-1, 1)
         loss = F.mse_loss(Y_pred, Y_target)
         print(f"LOSS: {loss}")
         return (loss)
 
     def forward(self, x):
         x = x['input']
+        x = x.permute(0, 3, 1, 2)
         print(f"Initial size: {x.size()}")
         x = F.relu(self.conv(x))
         print(f"Size after conv: {x.size()}")
@@ -57,10 +64,15 @@ class Net(TrainableModel):
         print(f"Size after conv2: {x.size()}")
 
         x = F.dropout(x, p=0.2, training=self.training)
+        print("Done dropout")
         x = F.relu(self.conv3(x))
+        print("Done relu")
         x = F.relu(self.conv4(x))
+        print("Done relu2")
         x = x.mean(dim=2).mean(dim=2)
+        print("Done mean")
         x = self.linear(x)
+        print("Done linear")
         return {'target': x}
 
     def checkpoint(self):
@@ -77,24 +89,33 @@ class Net(TrainableModel):
             self.load_state_dict(checkpoint['model_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
+    def score(self, preds, targets):
+        print(f"PREDS: {preds['target'][:, 0]}")
+        print(f"TARGETS: {targets['target']}")
+
+        score, _ = pearsonr(preds['target'][:, 0], targets['target'])
+        base_score, _ = pearsonr(preds['target'][:, 0],
+                                 shuffle(targets['target']))
+        print(f"Score: {score}. Base score: {base_score}")
+        return "{0:.4f}/{1:.4f}".format(score, base_score)
+
 
 if __name__ == "__main__":
+    # Pytorch can deadlock without this
+    # https://pytorch.org/docs/stable/notes/multiprocessing.html
+    multiprocessing.set_start_method('spawn')
 
     manager = Manager()
     model = Net()
     model.compile(torch.optim.Adadelta, lr=0.3)
 
     model.maybe_load_from_file()
-    controller = AzulController(model)
+    controller = AzulController(manager, model)
 
-    for i in range(0, 1000):
+    for i in range(0, 2):
         game = AzulSimulator(2)
         game.load(game)
-        game.make_move(random.choice(game.valid_moves()))
-        game.print_board()
-        print()
-
         while not game.over():
-            game.make_move(controller.best_move(game, playouts=100))
+            game.make_move(controller.best_move(game, playouts=1))
             game.print_board()
             print()
