@@ -446,9 +446,6 @@ class AzulSimulator(AbstractGame):
                     # Positions 26 - 31 are staging rows.
                     # Add 1 for the floor.
                     if t:
-                        print(
-                            f"Adding tile {t} to the obs at {(t.number, b * 31 + TILE_WALL_SIZE + y + board_index_start, int(t.color))}"
-                        )
                         obs[t.number][b * 31 + TILE_WALL_SIZE + y +
                                       board_index_start + 1][int(
                                           t.color)] = 1.0
@@ -688,9 +685,6 @@ class AzulSimulator(AbstractGame):
                                             1][color] == 1.0:
                             tile = Tile(tile_number, color)
                             board.tile_wall[x] = tile
-                            print(
-                                f"Populating tile wall with {tile} because {(tile_number, board_index_start + b * 31 + x +1,color)} is {1.0}"
-                            )
                     # populate staging rows
                     for y in range(0, 5):
                         # Add 1 for the floor.
@@ -700,9 +694,6 @@ class AzulSimulator(AbstractGame):
                                 None)
                             tile = Tile(tile_number, color)
                             board.staging_rows[y][first_empty_spot] = tile
-                            print(
-                                f"Adding tile {tile} to board {b} staging row {y} spot {first_empty_spot} because {board_index_start + b * 31 + y + TILE_WALL_SIZE}"
-                            )
 
     def print_board(self):
         print("SCORES")

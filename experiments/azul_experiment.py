@@ -116,6 +116,6 @@ if __name__ == "__main__":
         game = AzulSimulator(2)
         game.load(game)
         while not game.over():
-            game.make_move(controller.best_move(game, playouts=1))
+            game.make_move(controller.best_move(game, playouts=100))
             game.print_board()
             print()
