@@ -27,6 +27,16 @@ FLOOR_MAP = [-1, -1, -2, -2, -2, -3, -3]
 # plus floor.
 PLACEMENT_OPTIONS = 6
 
+# How many of each color tile there is.
+TILES_PER_COLOR = 20
+
+
+def tile_number_to_color(tile_number):
+    """
+    Given a tile number, return the color of that tile.
+    """
+    return int((tile_number - tile_number % TILES_PER_COLOR) / TILES_PER_COLOR)
+
 
 def sorted_tile_list(tile_list):
     """
@@ -164,8 +174,9 @@ class AzulSimulator(AbstractGame):
         self.bag = []
         tile_number = 0
         for c in range(0, len(COLORS)):
-            for _ in range(0, 20):
-                self.bag.append(Tile(tile_number, c))
+            for _ in range(0, TILES_PER_COLOR):
+                t = Tile(tile_number, c)
+                self.bag.append(t)
                 tile_number += 1
         # initialize the factories with tiles
         self.factories = [Factory([]) for _ in range(0, self.num_factories)]
@@ -646,54 +657,82 @@ class AzulSimulator(AbstractGame):
         # just grab it from the first one.
         self.turn = obs[0][0][len(COLORS) + 1]
 
+        tile_wall_to_fill_in = {
+            board: list(range(0, TILE_WALL_SIZE))
+            for board in range(0, len(self.boards))
+        }
         # Similarly, score is stored after turn.
         # Add score to state:
         for player in range(1, self.num_players + 1):
             self.scores[player] = obs[0, 0, len(COLORS) + 1 + player]
 
         for tile_number in range(0, self.num_tiles + 1):
-            for color in range(0, len(COLORS) + 1):
-                # Iterate over every color, INCLUDING the 1st mover.
-                for factory in range(0, self.num_factories):
-                    if obs[tile_number][factory][color] == 1.0:
-                        t = Tile(tile_number, color)
-                        self.factories[factory].tiles.append(t)
-                if obs[tile_number][self.num_factories][color] == 1.0:
-                    # Add tile to bag if appropriate.
-                    t = Tile(tile_number, color)
-                    self.bag.append(t)
-                if obs[tile_number][self.num_factories + 1][color] == 1.0:
-                    # Add tile to center if appropriate.
-                    t = Tile(tile_number, color)
-                    self.center.append(t)
-                if obs[tile_number][self.num_factories + 2][color] == 1.0:
-                    # Add tile to box if appropriate.
-                    t = Tile(tile_number, color)
-                    self.box.append(t)
+            color = tile_number_to_color(tile_number)
+            found = False
+            # Do some quick checks of where this tile belongs.
+            # Most likely it's in the bag, the box, or center.
+            # Frontload these checks because they're fast!
+            if obs[tile_number][self.num_factories][color] == 1.0:
+                # Add tile to bag if appropriate.
+                t = Tile(tile_number, color)
+                self.bag.append(t)
+                continue
+            if obs[tile_number][self.num_factories + 1][color] == 1.0:
+                # Add tile to center if appropriate.
+                t = Tile(tile_number, color)
+                self.center.append(t)
+                continue
+            if obs[tile_number][self.num_factories + 2][color] == 1.0:
+                # Add tile to box if appropriate.
+                t = Tile(tile_number, color)
+                self.box.append(t)
+                continue
 
-                # populate player boards
-                board_index_start = self.num_factories + 3
-                for b, board in enumerate(self.boards):
-                    # populate floor from observation
-                    if obs[tile_number][b * 31 +
-                                        board_index_start][color] == 1.0:
-                        board.floor.append(Tile(tile_number, color))
+            # Populate factories.
+            # Slightly slower than checking if in bag, box, or
+            # center. Be sure to continue out of the loop
+            # if you find the tile's location!
+            for factory in range(0, self.num_factories):
+                if obs[tile_number][factory][color] == 1.0:
+                    t = Tile(tile_number, color)
+                    self.factories[factory].tiles.append(t)
+                    found = True
+                    break
+            if found:
+                continue
 
-                    # populate tile wall
-                    for x in range(0, TILE_WALL_SIZE):
-                        if obs[tile_number][board_index_start + b * 31 + x +
-                                            1][color] == 1.0:
-                            tile = Tile(tile_number, color)
-                            board.tile_wall[x] = tile
-                    # populate staging rows
-                    for y in range(0, 5):
-                        # Add 1 for the floor.
-                        if obs[tile_number][board_index_start + b * 31 + y +
-                                            TILE_WALL_SIZE + 1][color] == 1.0:
-                            first_empty_spot = board.staging_rows[y].index(
-                                None)
-                            tile = Tile(tile_number, color)
-                            board.staging_rows[y][first_empty_spot] = tile
+            # populate player boards
+            # This can be time consuming! But again,
+            # make sure to continue out of the loop if successful.
+            board_index_start = self.num_factories + 3
+            for b, board in enumerate(self.boards):
+                # populate floor from observation
+                if obs[tile_number][b * 31 + board_index_start][color] == 1.0:
+                    board.floor.append(Tile(tile_number, color))
+                    found = True
+                    break
+                # populate staging rows
+                for y in range(0, 5):
+                    # Add 1 for the floor.
+                    if obs[tile_number][board_index_start + b * 31 + y +
+                                        TILE_WALL_SIZE + 1][color] == 1.0:
+                        first_empty_spot = board.staging_rows[y].index(None)
+                        tile = Tile(tile_number, color)
+                        board.staging_rows[y][first_empty_spot] = tile
+                        found = True
+                        break
+
+                # populate tile wall
+                for x in tile_wall_to_fill_in[b]:
+                    if obs[tile_number][board_index_start + b * 31 + x +
+                                        1][color] == 1.0:
+                        tile = Tile(tile_number, color)
+                        board.tile_wall[x] = tile
+                        tile_wall_to_fill_in[b].remove(x)
+                        found = True
+                        break
+                if found:
+                    break
 
     def print_board(self):
         print("SCORES")

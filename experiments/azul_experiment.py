@@ -82,9 +82,9 @@ class Net(TrainableModel):
                 'optimizer_state_dict': self.optimizer.state_dict(),
             }, PATH)
 
-    def maybe_load_from_file(self):
-        if os.path.exists(PATH):
-            print(f"Found model to load: {PATH}")
+    def maybe_load_from_file(self, path=PATH):
+        if os.path.exists(path):
+            print(f"Found model to load: {path}")
             checkpoint = torch.load(PATH)
             self.load_state_dict(checkpoint['model_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -116,6 +116,6 @@ if __name__ == "__main__":
         game = AzulSimulator(2)
         game.load(game)
         while not game.over():
-            game.make_move(controller.best_move(game, playouts=100))
+            game.make_move(controller.best_move(game, playouts=5))
             game.print_board()
             print()

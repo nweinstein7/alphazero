@@ -40,7 +40,7 @@ class AzulController(AlphaZeroController):
     """
 
     def playout(self, game, expand=150):
-        print("RUNNING PLAYOUT")
+        print(f"RUNNING PLAYOUT {expand}")
         if expand == 0 or game.over():
             score = game.score()
             self.record(game, score)
