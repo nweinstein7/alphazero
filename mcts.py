@@ -28,9 +28,9 @@ class MCTSController(object):
             hashable(game.state()), 0) + score
 
     r"""
-	Runs a single, random heuristic guided playout starting from a given state. This updates the 'visits' and 'differential'
-	counts for that state, as well as likely updating many children states.
-	"""
+    Runs a single, random heuristic guided playout starting from a given state. This updates the 'visits' and 'differential'
+    counts for that state, as well as likely updating many children states.
+    """
 
     def playout(self, game, expand=150):
         if expand == 0 or game.over():
@@ -56,8 +56,8 @@ class MCTSController(object):
         return score
 
     r"""
-	Evaluates the "value" of a state as a bandit problem, using the value + exploration heuristic.
-	"""
+    Evaluates the "value" of a state as a bandit problem, using the value + exploration heuristic.
+    """
 
     def heuristic_value(self, game):
         N = self.visits.get("total", 1)
@@ -66,22 +66,25 @@ class MCTSController(object):
         return V + self.C * (np.log(N) / Ni)
 
     r"""
-	Evaluates the "value" of a state by randomly playing out games starting from that state and noting the win/loss ratio.
-	"""
+    Evaluates the "value" of a state by randomly playing out games starting from that state and noting the win/loss ratio.
+    """
 
-    def value(self, game, playouts=100, steps=5):
+    def value(self, game, playouts=100, steps=5, pool=None):
 
         # play random playouts starting from that game value
-        with Pool() as p:
-            scores = p.map(self.playout,
-                           [game.copy() for i in range(0, playouts)])
+        if pool:
+            pool.map(self.playout, [game.copy() for i in range(0, playouts)])
+        else:
+            with Pool(processes=2) as p:
+                scores = p.map(self.playout,
+                               [game.copy() for i in range(0, playouts)])
 
         return self.differential[hashable(
             game.state())] * 1.0 / self.visits[hashable(game.state())]
 
     r"""
-	Chooses the move that results in the highest value state.
-	"""
+    Chooses the move that results in the highest value state.
+    """
 
     def best_move(self, game, playouts=100):
 

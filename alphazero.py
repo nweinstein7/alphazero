@@ -43,9 +43,9 @@ class AlphaZeroController(MCTSController):
 	Evaluates the "value" of a state by randomly playing out games starting from that state and noting the win/loss ratio.
 	"""
 
-    def value(self, game, playouts=100, steps=2):
+    def value(self, game, playouts=100, steps=2, pool=None):
 
-        V = super().value(game, playouts=playouts, steps=steps)
+        V = super().value(game, playouts=playouts, steps=steps, pool=pool)
         dataset = [{'input': game.state(), 'target': V}]
         for i in range(0, steps):
             self.model.fit(dataset, batch_size=1, verbose=True)
@@ -65,7 +65,7 @@ class AlphaZeroController(MCTSController):
 	regarding network valuations.
 	"""
 
-    def best_move(self, game, playouts=100):
+    def best_move(self, game, playouts=100, pool=None):
         print("Looking for best move.")
         action_mapping = {}
         previous_mapping = {}

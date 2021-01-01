@@ -41,6 +41,9 @@ class AzulController(AlphaZeroController):
 
     def playout(self, game, expand=150):
         print(f"RUNNING PLAYOUT {expand}")
+        if expand == 150:
+            print("Sleeping for a bit to allow other processes to run")
+            time.sleep(.1)
         if expand == 0 or game.over():
             score = game.score()
             self.record(game, score)

@@ -95,7 +95,9 @@ class AbstractModel(nn.Module):
         self.optimizer.step()
         self.eval()
 
-        return loss.cpu().data.numpy().mean()
+        mean = loss.cpu().data.numpy().mean()
+        del loss
+        return mean
 
     def forward(self, x):
         raise NotImplementedError()
