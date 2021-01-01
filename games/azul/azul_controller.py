@@ -46,7 +46,6 @@ class AzulController(AlphaZeroController):
             time.sleep(.1)
         if expand == 0 or game.over():
             score = game.score()
-            self.record(game, score)
             #print ('X' if game.turn==1 else 'O', score)
             return score
 
@@ -73,6 +72,24 @@ class AzulController(AlphaZeroController):
                                           expand=expand - 1)  #play branch
         print(f"Done playing branch with score {score}")
         game.undo_move()
-        self.record(game, score)
 
         return score
+
+    r"""
+        Evaluates the "value" of a state by randomly playing out games starting from that state and noting the win/loss ratio.
+        """
+
+    def value(self, game, playouts=100, steps=2, pool=None):
+        scores = []
+        if pool:
+            scores = pool.map(self.playout, [game.copy() for i in range(0, playouts)])
+        else:
+            # No parallelism.
+            scores = [self.playout(game.copy()) for i in range(0,playouts)]
+        V = sum(scores) / len(scores)
+        dataset = [{'input': game.state(), 'target': V}]
+        for i in range(0, steps):
+            self.model.fit(dataset, batch_size=1, verbose=True)
+
+        return V
+

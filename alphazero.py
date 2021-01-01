@@ -76,7 +76,7 @@ class AlphaZeroController(MCTSController):
             print("Getting network value.")
             previous_mapping[action] = self.network_value(game)
             print(f"Network value before training {previous_mapping[action]}")
-            action_mapping[action] = self.value(game, playouts=playouts)
+            action_mapping[action] = self.value(game, playouts=playouts, pool=pool)
             network_mapping[action] = self.network_value(game)
             print(f"Network value after training: {network_mapping[action]}")
             game.undo_move()

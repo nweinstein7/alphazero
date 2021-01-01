@@ -104,7 +104,6 @@ if __name__ == "__main__":
     # Pytorch can deadlock without this
     # https://pytorch.org/docs/stable/notes/multiprocessing.html
     multiprocessing.set_start_method('spawn')
-    torch.set_num_threads(2)
     manager = Manager()
     model = Net()
     model.compile(torch.optim.Adadelta, lr=0.3)
@@ -112,13 +111,12 @@ if __name__ == "__main__":
     model.maybe_load_from_file()
     controller = AzulController(manager, model)
 
-    with Pool(processes=multiprocessing.cpu_count() - 1,
-              maxtasksperchild=1) as pool:
-        for i in range(0, 1000):
-            game = AzulSimulator(2)
-            game.load(game)
-            while not game.over():
-                game.make_move(
-                    controller.best_move(game, playouts=5, pool=pool))
-                game.print_board()
-                print()
+    with Pool(processes=2) as pool:
+      for i in range(0, 1000):
+          game = AzulSimulator(2)
+          game.load(game)
+          while not game.over():
+              game.make_move(
+                  controller.best_move(game, playouts=10, pool=pool))
+              game.print_board()
+              print()
