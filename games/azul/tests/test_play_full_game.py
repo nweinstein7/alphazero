@@ -48,4 +48,4 @@ def test_playout():
     azs.make_move(0)
 
     score = controller.playout(azs)
-    assert score == 1
+    assert score == -1

@@ -472,9 +472,27 @@ class AzulSimulator(AbstractGame):
         Check if a round is still in progress
         - if there are tiles on factories OR
         - if there are tiles in the center
+
+        EDGE CASE: all the factories had 4 of a kind,
+        so the first mover tile is still available!
         """
-        return all(len(f.tiles) == 0
-                   for f in self.factories) and len(self.center) == 0
+        factories_empty = all(len(f.tiles) == 0 for f in self.factories)
+        if not factories_empty:
+            # If there are still tiles on the factories,
+            # round is definitely not over. No need to check the center.
+            return False
+        if len(self.center) == 0:
+            return True
+        elif len(
+                self.center) == 1 and self.center[0].color == FIRST_MOVER_TILE:
+            next_player = self.turn % self.num_players + 1
+            first_mover_tile = self.center.pop()
+            self.boards[next_player - 1].floor.append(first_mover_tile)
+            print(
+                f"Edge case hit: all factories had 4 of a kind so first mover tile never hit. Next round first player will be: {next_player}"
+            )
+            return True
+        return False
 
     def start_new_round(self):
         """
