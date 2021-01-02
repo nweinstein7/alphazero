@@ -1,4 +1,7 @@
+import pytest
 from games.azul.azul_simulator import AzulSimulator, Factory, Tile, FIRST_MOVER_TILE
+
+FOUR_OF_A_KIND_SHOULD_COPY = [False, True]
 
 
 def test_move_to_integer():
@@ -16,7 +19,8 @@ def test_move_to_integer():
         round_over = azs.make_move(move)
 
 
-def test_all_4_of_a_kind():
+@pytest.mark.parametrize("copy", FOUR_OF_A_KIND_SHOULD_COPY)
+def test_all_4_of_a_kind(copy):
     """
     If all factories have 4 of a kind tiles on them,
     need to make sure game doesn't crash!!
@@ -36,6 +40,8 @@ def test_all_4_of_a_kind():
                                   if t.color == factory_tile_type.color)
                 factory.tiles[index] = next_value
                 azs.bag.remove(next_value)
+    if copy:
+        azs = azs.copy()
     azs.print_board()
 
     round_over = False

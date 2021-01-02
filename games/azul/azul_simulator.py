@@ -487,7 +487,7 @@ class AzulSimulator(AbstractGame):
                 self.center) == 1 and self.center[0].color == FIRST_MOVER_TILE:
             next_player = self.turn % self.num_players + 1
             first_mover_tile = self.center.pop()
-            self.boards[next_player - 1].floor.append(first_mover_tile)
+            self.boards[int(next_player - 1)].floor.append(first_mover_tile)
             print(
                 f"Edge case hit: all factories had 4 of a kind so first mover tile never hit. Next round first player will be: {next_player}"
             )
