@@ -85,7 +85,11 @@ class Net(TrainableModel):
     def maybe_load_from_file(self, path=PATH):
         if os.path.exists(path):
             print(f"Found model to load: {path}")
-            checkpoint = torch.load(PATH)
+            checkpoint = None
+            if torch.cuda.is_available():
+                checkpoint = torch.load(PATH)
+            else:
+                checkpoint = torch.load(PATH, map_location=torch.device('cpu'))
             self.load_state_dict(checkpoint['model_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
@@ -112,11 +116,11 @@ if __name__ == "__main__":
     controller = AzulController(manager, model)
 
     with Pool(processes=2) as pool:
-      for i in range(0, 1000):
-          game = AzulSimulator(2)
-          game.load(game)
-          while not game.over():
-              game.make_move(
-                  controller.best_move(game, playouts=10, pool=pool))
-              game.print_board()
-              print()
+        for i in range(0, 1000):
+            game = AzulSimulator(2)
+            game.load(game)
+            while not game.over():
+                game.make_move(
+                    controller.best_move(game, playouts=10, pool=pool))
+                game.print_board()
+                print()

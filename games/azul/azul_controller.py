@@ -43,7 +43,7 @@ class AzulController(AlphaZeroController):
         print(f"RUNNING PLAYOUT {expand}")
         if expand == 150:
             print("Sleeping for a bit to allow other processes to run")
-            time.sleep(.1)
+            time.sleep(.0001)
         if expand == 0 or game.over():
             score = game.score()
             #print ('X' if game.turn==1 else 'O', score)
@@ -82,14 +82,14 @@ class AzulController(AlphaZeroController):
     def value(self, game, playouts=100, steps=2, pool=None):
         scores = []
         if pool:
-            scores = pool.map(self.playout, [game.copy() for i in range(0, playouts)])
+            scores = pool.map(self.playout,
+                              [game.copy() for i in range(0, playouts)])
         else:
             # No parallelism.
-            scores = [self.playout(game.copy()) for i in range(0,playouts)]
+            scores = [self.playout(game.copy()) for i in range(0, playouts)]
         V = sum(scores) / len(scores)
         dataset = [{'input': game.state(), 'target': V}]
         for i in range(0, steps):
             self.model.fit(dataset, batch_size=1, verbose=True)
 
         return V
-

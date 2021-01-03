@@ -76,7 +76,9 @@ class AlphaZeroController(MCTSController):
             print("Getting network value.")
             previous_mapping[action] = self.network_value(game)
             print(f"Network value before training {previous_mapping[action]}")
-            action_mapping[action] = self.value(game, playouts=playouts, pool=pool)
+            action_mapping[action] = self.value(game,
+                                                playouts=playouts,
+                                                pool=pool)
             network_mapping[action] = self.network_value(game)
             print(f"Network value after training: {network_mapping[action]}")
             game.undo_move()
@@ -90,12 +92,16 @@ class AlphaZeroController(MCTSController):
              for a in action_mapping})
 
         moves = action_mapping.keys()
-        data1 = [action_mapping[action] for action in moves]
-        data2 = [previous_mapping[action] for action in moves]
-        data3 = [network_mapping[action] for action in moves]
-        R1, p1 = pearsonr(data1, data2)
-        R2, p2 = pearsonr(data1, data3)
-        print("Correlation before fitting: {0:.4f} (p={1:.4f})".format(R1, p1))
-        print("Correlation after fitting: {0:.4f} (p={1:.4f})".format(R2, p2))
-
+        if len(moves) > 1 and len(data):
+            data1 = [action_mapping[action] for action in moves]
+            data2 = [previous_mapping[action] for action in moves]
+            data3 = [network_mapping[action] for action in moves]
+            R1, p1 = pearsonr(data1, data2)
+            R2, p2 = pearsonr(data1, data3)
+            print("Correlation before fitting: {0:.4f} (p={1:.4f})".format(
+                R1, p1))
+            print("Correlation after fitting: {0:.4f} (p={1:.4f})".format(
+                R2, p2))
+        else:
+            print(f"No correlation calculation. Only 1 possible move! {moves}")
         return max(action_mapping, key=action_mapping.get)
