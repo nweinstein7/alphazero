@@ -92,7 +92,7 @@ class AlphaZeroController(MCTSController):
              for a in action_mapping})
 
         moves = action_mapping.keys()
-        if len(moves) > 1 and len(data):
+        if len(moves) > 1:
             data1 = [action_mapping[action] for action in moves]
             data2 = [previous_mapping[action] for action in moves]
             data3 = [network_mapping[action] for action in moves]

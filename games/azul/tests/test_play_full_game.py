@@ -7,8 +7,19 @@ from experiments.azul_experiment import Net
 import multiprocessing
 from multiprocessing import Manager
 import torch
+import pytest
 
 HERE = os.path.dirname(__file__)
+
+multiprocessing.set_start_method('spawn')
+
+BEST_MOVE_TEST_CASES = [(
+    1,
+    0,
+), (
+    2,
+    1,
+)]
 
 
 def test_play_full_game():
@@ -31,8 +42,6 @@ def test_playout():
     """
     Test playout
     """
-    multiprocessing.set_start_method('spawn')
-
     manager = Manager()
     model = Net()
     model.compile(torch.optim.Adadelta, lr=0.3)
@@ -51,12 +60,12 @@ def test_playout():
     assert score == -1
 
 
-def test_best_move():
+@pytest.mark.parametrize('moves_left,expected_move_index',
+                         BEST_MOVE_TEST_CASES)
+def test_best_move(moves_left, expected_move_index):
     """
-    Test best move when there is only one move available!
+    Test best move, especially when there is only one move available!
     """
-    multiprocessing.set_start_method('spawn')
-
     manager = Manager()
     model = Net()
     model.compile(torch.optim.Adadelta, lr=0.3)
@@ -70,10 +79,10 @@ def test_best_move():
     azs.print_board()
     # Move red to player 1's first tile row, evaluate how good this is.
     moves = azs.valid_moves()
-    while len(moves) > 1:
+    while len(moves) > moves_left:
         move = moves[0]
         azs.make_move(move)
         moves = azs.valid_moves()
     azs.print_board()
     move = controller.best_move(azs, playouts=1)
-    assert move == moves[0]
+    assert move == moves[expected_move_index]
