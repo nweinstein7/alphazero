@@ -53,7 +53,7 @@ class AzulController(AlphaZeroController):
 
         for action in game.valid_moves():
             print(f"Making first move with action {action}")
-            game.print_board()
+            #game.print_board()
             game.make_move(action)
             print(f"ACTION: {action}")
             action_mapping[action] = self.heuristic_value(game)

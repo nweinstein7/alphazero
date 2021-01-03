@@ -192,14 +192,10 @@ class AzulSimulator(AbstractGame):
         return self
 
     def copy(self):
-        print("BEFORE COPY")
-        self.print_board()
         azs = AzulSimulator(num_players=self.num_players,
                             num_tiles=self.num_tiles,
                             turn=self.turn)
         azs.initialize_from_obs(self.state())
-        print("AFTER COPY")
-        azs.print_board()
         return azs
 
     def parse_integer_move(self, move):
@@ -403,7 +399,7 @@ class AzulSimulator(AbstractGame):
                         else:
                             print("No tiles found")
         board.floor.extend(tiles)
-        self.print_board()
+        #self.print_board()
         return self.start_new_round()
 
     def state(self):
